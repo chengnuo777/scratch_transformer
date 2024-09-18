@@ -1,0 +1,74 @@
+# Python bytecode files
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.pdb
+*.egg-info/
+*.eggs/
+*.coverage
+*.hypothesis/
+*.tox/
+*.nox/
+
+# Virtual environment
+.venv/
+env/
+venv/
+ENV/
+.venv/
+*.env
+
+# Jupyter Notebook checkpoints
+.ipynb_checkpoints/
+
+# PyCharm IDE files
+.idea/
+*.iml
+*.iws
+*.swp
+
+# MacOS specific files
+.DS_Store
+
+# Windows specific files
+Thumbs.db
+Desktop.ini
+
+# Logs
+*.log
+
+# Model checkpoints
+checkpoint/
+*.ckpt
+*.h5
+*.pt
+
+# Distribution / packaging
+*.egg
+*.egg-info/
+dist/
+build/
+
+# Environment files
+*.env
+*.venv
+*.virtualenv
+
+# Testing files
+nosetests.xml
+coverage.xml
+*.cover
+
+# Coverage reports
+.coverage
+*.cover
+*.py,cover
+
+# Backup files
+*~
+*.bak
+
+# Other temporary files
+*.tmp
+*.swp
