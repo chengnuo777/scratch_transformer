@@ -153,4 +153,10 @@ class MutiHeadedAttention(nn.Module):
 """
 Feed Forward Network
 """
+class PositionwiseFeedForward(nn.Module):
+    def __init__(self):
+        super.__init__()
+
+    def forward(self):
+        return null
 
