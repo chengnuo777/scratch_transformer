@@ -4,25 +4,36 @@ import math
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from caffe2.python.helpers.dropout import dropout
-from numpy.array_api import positive
-from torch.nn.functional import linear
 
-from single_test.test_Generator import d_model
-
-
+"""
+模型架构
+"""
 class EncoderDecoder(nn.Module):
-    def __init__(self, encoder, decoder, generator):
+    """
+    一个标准的 Encoder-Decoder 网络架构
+    """
+    def __init__(self, encoder, decoder, src_embed, tgt_embed, generator):
         super(EncoderDecoder, self).__init__()
         self.encoder = encoder
         self.decoder = decoder
+        self.src_embed = src_embed
+        self.tgt_embed = tgt_embed
         self.generator = generator
 
-    def forward(self, src, trg):
-        return
+    def encode(self, src, src_mask):
+        return self.encoder(self.src_embed(src), src_mask)
+
+    def decode(self, memory, src_mask, tgt, tgt_mask):
+        return self.decoder(self.tgt_embed(tgt), memory, src_mask, tgt_mask)
+
+    def forward(self, src, tgt, src_mask, tgt_mask):
+        return self.decode(self.encode(src, src_mask), src_mask, tgt, tgt_mask)
 
 
 class Generator(nn.Module):
+    """
+    标准的 线性层 + softmax层
+    """
     def __init__(self, d_model, d_vocab):
         super(Generator, self).__init__()
         self.proj = nn.Linear(d_model, d_vocab)
@@ -34,10 +45,14 @@ class Generator(nn.Module):
 Encoder 和 Decoder
 """
 def clones(module, N):
+    """产生N个独立层"""
     return nn.ModuleList([copy.deepcopy(module) for _ in range(N)])
 
 
 class Encoder(nn.Module):
+    """
+    N层堆叠的encoder
+    """
     def __init__(self, layer, N):
         super().__init__()
         self.layers = clones(layer, N)
@@ -64,6 +79,9 @@ class LayerNorm(nn.Module):
 
 
 class SublayerConnection(nn.Module):
+    """
+    抽象出 残差层 + layernorm层 的结构
+    """
     def __init__(self, size, dropout):
         super().__init__()
         self.dropout = dropout
@@ -74,6 +92,9 @@ class SublayerConnection(nn.Module):
 
 
 class EncoderLayer(nn.Module):
+    """
+    self-attn层 + feed-forward层
+    """
     def __init__(self, size, self_attn, feed_forward, dropout):
         super().__init__()
         self.self_attn = self_attn
@@ -85,6 +106,9 @@ class EncoderLayer(nn.Module):
         return self.sublayer[1](x, self.feed_forward)
 
 class Decoder(nn.Module):
+    """
+    N层堆叠的decoder
+    """
     def __init__(self, layer, N):
         super().__init__()
         self.layers = clones(layer, N)
@@ -96,6 +120,9 @@ class Decoder(nn.Module):
         return self.norm(x)
 
 class DecoderLayer(nn.Module):
+    """
+    self-attn层 + src-attn层 + feedforward层
+    """
     def __init__(self, size, self_attn, src_attn, feed_forward, dropout):
         super().__init__()
         self.self_attn = self_attn
@@ -118,6 +145,7 @@ class DecoderLayer(nn.Module):
 Attention
 """
 def attention(query, key, value, mask=None, dropout=None):
+    """Scaled Dot Product（缩放点积）"""
     d_k = query.size(-1)
     score = torch.matmul(query, key.transpose(-2, -1)) / math.sqrt(d_k)
     if mask is not None:
@@ -127,6 +155,7 @@ def attention(query, key, value, mask=None, dropout=None):
     if dropout is not None:
         p_attn = dropout(p_attn)
     return torch.matmul(p_attn, value), p_attn
+
 
 class MutiHeadedAttention(nn.Module):
     def __init__(self, h, d_model, dropout=0.1):
@@ -184,6 +213,7 @@ class Embeddings(nn.Module):
 Position Encoding
 """
 class PositionEncoding(nn.Module):
+    """位置编码"""
     def __init__(self, d_model, dropout, max_len=5000):
         super().__init__()
         self.dropout = nn.Dropout(p=dropout)
