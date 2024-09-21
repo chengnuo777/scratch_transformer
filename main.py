@@ -5,6 +5,8 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
+from Generator import Generator
+
 """
 模型架构
 """
@@ -30,16 +32,6 @@ class EncoderDecoder(nn.Module):
         return self.decode(self.encode(src, src_mask), src_mask, tgt, tgt_mask)
 
 
-class Generator(nn.Module):
-    """
-    标准的 线性层 + softmax层
-    """
-    def __init__(self, d_model, d_vocab):
-        super(Generator, self).__init__()
-        self.proj = nn.Linear(d_model, d_vocab)
-
-    def forward(self, x):
-        return F.log_softmax(self.proj(x), dim=-1)
 
 """
 Encoder 和 Decoder
@@ -82,9 +74,9 @@ class SublayerConnection(nn.Module):
     """
     抽象出 残差层 + layernorm层 的结构
     """
-    def __init__(self, size, dropout):
+    def __init__(self, size, dropout=0.1):
         super().__init__()
-        self.dropout = dropout
+        self.dropout = nn.Dropout(p=dropout)
         self.norm = LayerNorm(size)
 
     def forward(self, x, sublayer):
@@ -100,6 +92,7 @@ class EncoderLayer(nn.Module):
         self.self_attn = self_attn
         self.feed_forward = feed_forward
         self.sublayer = clones(SublayerConnection(size, dropout), 2)
+        self.size = size
 
     def forward(self, x, mask):
         x = self.sublayer[0](x, lambda x: self.self_attn(x, x, x, mask))
@@ -114,9 +107,9 @@ class Decoder(nn.Module):
         self.layers = clones(layer, N)
         self.norm = LayerNorm(layer.size)
 
-    def forward(self, x):
+    def forward(self, x, memory, src_mask, tgt_mask):
         for layer in self.layers:
-            x = layer(x)
+            x = layer(x, memory, src_mask, tgt_mask)
         return self.norm(x)
 
 class DecoderLayer(nn.Module):
@@ -129,6 +122,7 @@ class DecoderLayer(nn.Module):
         self.src_attn = src_attn
         self.feed_forward = feed_forward
         self.sublayer = clones(SublayerConnection(size, dropout), 3)
+        self.size = size
 
     def forward(self, x, memory, tgt_mask, src_mask):
         self.sublayer[0](x, lambda x: self.self_attn(x, x, x, src_mask))
@@ -136,10 +130,10 @@ class DecoderLayer(nn.Module):
         return self.sublayer[2](x, self.feed_forward)
 
 
-# def subsequent_mask(size):
-#     attn_type = (1, size, size)
-#     subsequent_mask = torch.triu(torch.ones(attn_type), 1).type(torch.uint8)
-#     return subsequent_mask == 0
+def subsequent_mask(size):
+    attn_type = (1, size, size)
+    subsequent_mask = torch.triu(torch.ones(attn_type), 1).type(torch.uint8)
+    return subsequent_mask == 0
 
 """
 Attention
@@ -202,8 +196,9 @@ class PositionwiseFeedForward(nn.Module):
 Embedding
 """
 class Embeddings(nn.Module):
-    def __init__(self, n_vocab, d_model):
+    def __init__(self, d_model, n_vocab):
         super().__init__()
+        self.d_model = d_model
         self.embed = nn.Embedding(n_vocab, d_model)
     def forward(self, x):
         return self.embed(x) * math.sqrt(self.d_model)
@@ -217,6 +212,7 @@ class PositionEncoding(nn.Module):
     def __init__(self, d_model, dropout, max_len=5000):
         super().__init__()
         self.dropout = nn.Dropout(p=dropout)
+
         pe = torch.zeros(max_len, d_model)
         position = torch.arange(0, max_len).unsqueeze(1)
         div_term = torch.exp(torch.arange(0, d_model, 2) * -(math.log(10000.0) / d_model))
@@ -226,5 +222,55 @@ class PositionEncoding(nn.Module):
         self.register_buffer('pe', pe)
 
     def forward(self, x):
-        x = x + self.pe[:, :x.size[1]].requires_grad_(False)
+        x = x + self.pe[:, :x.size(1)].requires_grad_(False)
         return self.dropout(x)
+
+
+class PositionalEncoding(nn.Module):
+    "Implement the PE function."
+
+    def __init__(self, d_model, dropout, max_len=5000):
+        super(PositionalEncoding, self).__init__()
+        self.dropout = nn.Dropout(p=dropout)
+
+        # Compute the positional encodings once in log space.
+        pe = torch.zeros(max_len, d_model)
+        position = torch.arange(0, max_len).unsqueeze(1)
+        div_term = torch.exp(
+            torch.arange(0, d_model, 2) * -(math.log(10000.0) / d_model)
+        )
+        pe[:, 0::2] = torch.sin(position * div_term)
+        pe[:, 1::2] = torch.cos(position * div_term)
+        pe = pe.unsqueeze(0)
+        self.register_buffer("pe", pe)
+
+    def forward(self, x):
+        x = x + self.pe[:, : x.size(1)].requires_grad_(False)
+        return self.dropout(x)
+
+"""
+Full Model
+"""
+def make_model(
+        src_vocab, tgt_vocab, N=6, d_model=512, d_ff=2048, h=8, dropout=0.1
+):
+    c = copy.deepcopy
+    attn = MutiHeadedAttention(h, d_model, dropout)
+    ff = PositionwiseFeedForward(d_model, d_ff, dropout)
+
+    model = EncoderDecoder(
+        Encoder(EncoderLayer(d_model, c(attn), c(ff), dropout), N),
+        Decoder(DecoderLayer(d_model, c(attn), c(attn), c(ff), dropout), N),
+        nn.Sequential(Embeddings(d_model, src_vocab), PositionalEncoding(d_model, dropout)),
+        nn.Sequential(Embeddings(d_model, tgt_vocab), PositionalEncoding(d_model, dropout)),
+        Generator(d_model, tgt_vocab)
+    )
+
+    for p in model.parameters():
+        if p.dim() > 1:
+            nn.init.xavier_uniform_(p)
+
+    return model
+
+
+
