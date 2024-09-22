@@ -1,6 +1,6 @@
 import torch
 
-from main import make_model, subsequent_mask
+from Network import make_model, subsequent_mask
 
 
 def inference_test():

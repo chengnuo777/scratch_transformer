@@ -1,4 +1,4 @@
-from main import *
+from Network import *
 
 d_model = 756
 vocab = 10000
